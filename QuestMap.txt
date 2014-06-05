@@ -1,0 +1,8 @@
+## Title: QuestMap
+## Author: Sharlikran
+## Version: 0.1.0
+## APIVersion: 100004
+## SavedVariables: QuestMap_SavedVariables
+
+QuestMap.lua
+QuestMap.xml

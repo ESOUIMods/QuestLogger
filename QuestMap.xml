@@ -1,0 +1,9 @@
+<GuiXml>
+    <Controls>
+        <TopLevelControl name="EsoheadUi">
+            <OnUpdate>
+                QuestMap.OnUpdate(time)
+            </OnUpdate>
+        </TopLevelControl>
+    </Controls>
+</GuiXml>
