@@ -1,8 +1,8 @@
 -----------------------------------------
 --                                     --
---            E s o h e a d            --
---                                     --
---    E-mail: feedback@esohead.com     --
+--  QuestMap based off of code from    --
+--  Esohead by Zam Network and         --
+--  HarvestMap by Shinni               --
 --                                     --
 -----------------------------------------
 
@@ -39,8 +39,9 @@ end
 function QuestMap.InitSavedVariables()
     QuestMap.savedVars = {
         ["internal"]     = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 1, "internal", { debug = QuestMap.debugDefault, language = "" }),
-        ["npc"]          = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 2, "npc", QuestMap.dataDefault),
-        ["quest"]        = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 2, "quest", QuestMap.dataDefault),
+        ["npc"]          = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 1, "npc", QuestMap.dataDefault),
+        ["quest"]        = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 1, "quest", QuestMap.dataDefault),
+        ["progress"]     = ZO_SavedVars:NewAccountWide("QuestMap_SavedVariables", 1, "progress", QuestMap.dataDefault),
     }
 
     if QuestMap.savedVars["internal"].debug == 1 then
@@ -183,14 +184,6 @@ function QuestMap.OnUpdate(time)
             QuestMap.isHarvesting = false
         end
 
-        if textureName ~= QuestMap.lastMap then
-            if QuestMap.savedVars["internal"].debug == 1 then
-                QuestMap.Debug(textureName)
-            end
-            QuestMap.saveMapName(textureName, world, subzone, playerLocation)
-            QuestMap.lastMap = textureName
-        end
-
         if action ~= QuestMap.action then
             QuestMap.action = action -- QuestMap.action is the global current action
 
@@ -302,38 +295,169 @@ end
 -----------------------------------------
 --           Data Logging              --
 -----------------------------------------
-function QuestMap.recordData(dataType, map, x, y, nodeName, level )
-    local world, subzone, location = select(3,map:find("([%w%-]+)/([%w%-]+_[%w%-]+)/([%w%-]+)"))
-    local blackListMap = world .. "\/" .. subzone
-    --d(blackListMap)
-    if QuestMap.blacklistMap(blackListMap) then
+
+-----------------------------------------
+--         Check Duplicate Data        --
+-----------------------------------------
+function QuestMap.questFound(type, map, x, y, questName )
+    local world, subzone, location = select(3,map:find("([%w%-]+)/([_%w%-]+)/([_%w%-]+)"))
+
+    -- If this check is not here the next routine will fail
+    -- after the loading screen because for a brief moment
+    -- the information is not available.
+    if QuestMap.savedVars[type] == nil then
         return
     end
 
-    -- nodeName = npcName
-    -- level = npcLevel
-    if dataType == "npc" then
-        if QuestMap.LogCheck(dataType, {world, subzone, location, nodeName}, x, y, QuestMap.minReticleover, nil) then
-                QuestMap.Log(dataType, {world, subzone, location, nodeName}, x, y, level)
+    if not QuestMap.savedVars[type].data[world] then
+        return false
+    end
+
+    if not QuestMap.savedVars[type].data[world][subzone] then
+        return false
+    end
+
+    if not QuestMap.savedVars[type].data[world][subzone][location] then
+        return false
+    end
+
+    distance = QuestMap.questGiver
+
+    for quest, quests in pairs( QuestMap.savedVars[type].data[world][subzone][location] ) do
+        if quest == questName then
+            if QuestMap.savedVars["internal"].debug == 1 then
+                QuestMap.Debug("Questname : " .. questName .. " at : " .. map .. " x:" .. x .." , y:" .. y .. " found!")
+            end
+            return true
+        end
+    end
+    if QuestMap.savedVars["internal"].debug == 1 then
+        QuestMap.Debug("Questname : " .. questName .. " at : " .. map .. " x:" .. x .." , y:" .. y .. " not found!")
+    end
+    return false
+end
+
+function QuestMap.progressExists(type, questName, isPushed, isComplete, mainStepChanged)
+
+    -- If this check is not here the next routine will fail
+    -- after the loading screen because for a brief moment
+    -- the information is not available.
+    if QuestMap.savedVars[type] == nil then
+        return
+    end
+
+    if not QuestMap.savedVars[type].data[questName] then
+        return false
+    end
+
+    for quest, quests in pairs( QuestMap.savedVars[type].data ) do
+        for index, value in pairs(quests) do
+            if quest == questName then
+                if QuestMap.savedVars["internal"].debug == 1 then
+                    QuestMap.Debug("Quest progress : " .. questName .. " found!")
+                end
+                if value[1] ~= isPushed then
+                    value[1] = isPushed
+                    if QuestMap.savedVars["internal"].debug == 1 then
+                        QuestMap.Debug("Quest progress : " .. questName .. " isPushed updated!")
+                        QuestMap.Debug(value[1])
+                    end
+                end
+                if value[2] ~= isComplete then
+                    value[2] = isComplete
+                    if QuestMap.savedVars["internal"].debug == 1 then
+                        QuestMap.Debug("Quest progress : " .. questName .. " isComplete updated!")
+                        QuestMap.Debug(value[2])
+                    end
+                end
+                if value[3] ~= mainStepChanged then
+                    value[3] = mainStepChanged
+                    if QuestMap.savedVars["internal"].debug == 1 then
+                        QuestMap.Debug("Quest progress : " .. questName .. " mainStepChanged updated!")
+                        QuestMap.Debug(value[3])
+                    end
+                end
+                return true
             end
         end
-    -- nodeName = questName
-    -- level = questLevel
-    elseif dataType == "quest" then
-        if QuestMap.LogCheck(dataType, {world, subzone, location, nodeName}, x, y, QuestMap.minReticleover, nil) then
-            QuestMap.Log(
-                dataType,
-                {world, subzone, location, nodeName},
-                x,
-                y,
-                level,
-                QuestMap.currentConversation.npcName,
-                QuestMap.currentConversation.npcLevel
-            )
-        end
-    else
-        QuestMap.Debug("Attempted to log unknown type " .. dataType)
     end
+    if QuestMap.savedVars["internal"].debug == 1 then
+        QuestMap.Debug("Quest progress : " .. questName .. " not found!")
+    end
+    return false
+end
+
+-----------------------------------------
+--           Save Quest Data           --
+-----------------------------------------
+
+function QuestMap.saveQuestData(type, map, x, y, questName, questLevel, npcName, npcLevel)
+    local world, subzone, location = select(3,map:find("([%w%-]+)/([_%w%-]+)/([_%w%-]+)"))
+
+    if QuestMap.savedVars[type] == nil or QuestMap.savedVars[type].data == nil then
+        QuestMap.Debug("Attempted to log unknown type: " .. type)
+        return
+    end
+
+    if QuestMap.questFound(type, map, x, y, questName ) then
+        return
+    end
+
+    if QuestMap.savedVars[type] == nil then
+        return
+    end
+
+    if not QuestMap.savedVars[type].data[world] then
+        QuestMap.savedVars[type].data[world] = {}
+    end
+
+    if not QuestMap.savedVars[type].data[world][subzone] then
+        QuestMap.savedVars[type].data[world][subzone] = {}
+    end
+
+    if not QuestMap.savedVars[type].data[world][subzone][location] then
+        QuestMap.savedVars[type].data[world][subzone][location] = {}
+    end
+
+    if not QuestMap.savedVars[type].data[world][subzone][location][questName] then
+        QuestMap.savedVars[type].data[world][subzone][location][questName] = {}
+    end
+
+    --if QuestMap.savedVars["internal"].debug == 1 then
+    --end
+    table.insert( QuestMap.savedVars[type].data[world][subzone][location][questName], { x, y, questLevel, npcName, npcLevel } )
+    if QuestMap.savedVars["internal"].debug == 1 then
+        QuestMap.Debug("Quest data saved!")
+    end
+end
+
+function QuestMap.saveQuestProgress(type, questName, isPushed, isComplete, mainStepChanged)
+
+    if QuestMap.savedVars[type] == nil or QuestMap.savedVars[type].data == nil then
+        QuestMap.Debug("Attempted to log unknown type: " .. type)
+        return
+    end
+
+    if QuestMap.progressExists( type, questName, isPushed, isComplete, mainStepChanged ) then
+        return
+    end
+
+    -- If this check is not here the next routine will fail
+    -- after the loading screen because for a brief moment
+    -- the information is not available.
+    if QuestMap.savedVars[type] == nil then
+        return
+    end
+
+    if not QuestMap.savedVars[type].data[questName] then
+        QuestMap.savedVars[type].data[questName] = {}
+    end
+
+    table.insert( QuestMap.savedVars[type].data[questName], { isPushed, isComplete, mainStepChanged } )
+    if QuestMap.savedVars["internal"].debug == 1 then
+        QuestMap.Debug("Quest progress savedSave data!")
+    end
+
 end
 
 -----------------------------------------
@@ -354,7 +478,24 @@ function QuestMap.OnQuestAdded(_, questIndex)
     end
     -- quests are not tracked when your reticle is over the quest giver
     -- however the NPC might move around, therefore range checking is needed
-    QuestMap.recordData(targetType, QuestMap.currentConversation.subzone, QuestMap.currentConversation.x, QuestMap.currentConversation.y, questName, questLevel )
+
+    QuestMap.saveQuestData(
+        targetType, 
+        QuestMap.currentConversation.subzone, 
+        QuestMap.currentConversation.x, 
+        QuestMap.currentConversation.y, 
+        questName, 
+        questLevel, 
+        QuestMap.currentConversation.npcName,
+        QuestMap.currentConversation.npcLevel
+    )
+end
+
+function QuestMap.OnQuestAdvanced(_, questIndex, questName, isPushed, isComplete, mainStepChanged)
+
+    local targetType = "progress"
+
+    QuestMap.saveQuestProgress(targetType, questName, isPushed, isComplete, mainStepChanged)
 end
 
 -----------------------------------------
@@ -380,6 +521,7 @@ end
 function QuestMap.OnTargetChange(eventCode)
     local tag = "reticleover"
     local type = GetUnitType(tag)
+    local targetType = "npc"
 
     -- ensure the unit that the reticle is hovering is a non-playing character
     if type == 2 then
@@ -392,7 +534,10 @@ function QuestMap.OnTargetChange(eventCode)
 
         local level = QuestMap.GetUnitLevel(tag)
 
-    QuestMap.recordData("npc", textureName, x, y, name, level )
+        if QuestMap.LogCheck(dataType, {world, subzone, location, nodeName}, x, y, QuestMap.minReticleover, nil) then
+                QuestMap.Log(dataType, {world, subzone, location, nodeName}, x, y, level)
+        end
+    end
 end
 
 -----------------------------------------
@@ -402,6 +547,7 @@ end
 QuestMap.validCategories = {
     "quest",
     "npc",
+    "progress",
 }
 
 function QuestMap.IsValidCategory(name)
@@ -414,7 +560,7 @@ function QuestMap.IsValidCategory(name)
     return false
 end
 
-SLASH_COMMANDS["/QuestMap"] = function (cmd)
+SLASH_COMMANDS["/quest"] = function (cmd)
     local commands = {}
     local index = 1
     for i in string.gmatch(cmd, "%S+") do
@@ -459,7 +605,7 @@ SLASH_COMMANDS["/QuestMap"] = function (cmd)
             end
         end
 
-    elseif commands[1] == "datalog" then
+    elseif commands[1] == "asdfghjkl" then
         QuestMap.Debug("---")
         QuestMap.Debug("Complete list of gathered data:")
         QuestMap.Debug("---")
@@ -467,6 +613,7 @@ SLASH_COMMANDS["/QuestMap"] = function (cmd)
         local counter = {
             ["npc"] = 0,
             ["quest"] = 0,
+            ["progress"] = 0,
         }
 
         for type,sv in pairs(QuestMap.savedVars) do
@@ -507,9 +654,12 @@ function QuestMap.OnLoad(eventCode, addOnName)
     QuestMap.InitSavedVariables()
     QuestMap.savedVars["internal"]["language"] = QuestMap.language
 
-    EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_RETICLE_TARGET_CHANGED, QuestMap.OnTargetChange) -- Keep
+    --EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_RETICLE_TARGET_CHANGED, QuestMap.OnTargetChange)
     EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_CHATTER_BEGIN, QuestMap.OnChatterBegin)
-    EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_QUEST_ADDED, QuestMap.OnQuestAdded) -- Keep
+    EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_QUEST_ADDED, QuestMap.OnQuestAdded)
+    EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_QUEST_ADVANCED, QuestMap.OnQuestAdvanced)
+    --EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_QUEST_COMPLETE_EXPERIENCE, QuestMap.OnExperenceGained)
+    
 end
 
 EVENT_MANAGER:RegisterForEvent("QuestMap", EVENT_ADD_ON_LOADED, function (eventCode, addOnName)
